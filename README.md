@@ -1,5 +1,11 @@
 # RegistroAsistencia — Backend
 
+## Utilizacion de este backend
+
+Para mas informacion sobre los endpoints disponibles, ver [API.md](API.md).
+
+Se recomienda usar [Postman](https://www.postman.com/) para probar los endpoints manualmente.
+
 ## Puesta en marcha
 
 ### 1. Clonar el repositorio
@@ -10,9 +16,31 @@ git clone https://github.com/Alfonsonrx/QuimicosBackend.git
 
 ### 2. Base de datos
 
-Antes que nada, es necesario contar con una base de datos **PostgreSQL 15** (la version mas estable y soportada a la fecha) con el nombre `db_asistencias`.
+Antes que nada, es necesario contar con una base de datos **PostgreSQL 15** (la version mas estable y soportada a la fecha) con el nombre `db_asistencias`. Este paso no lo automatiza el script de configuracion (ver mas abajo): cada quien puede tener Postgres instalado de forma distinta (local, Docker, etc.), asi que hay que crear la base de datos a mano antes de continuar.
 
-### 3. Entorno virtual de Python
+### 3. Configuracion automatica (recomendado)
+
+Una vez creada la base de datos, se puede automatizar todo lo que sigue (entorno virtual, dependencias, archivo `.env` y migraciones) con un solo script.
+
+En Linux/macOS:
+
+```
+./setup.sh
+```
+
+En Windows (PowerShell):
+
+```
+powershell -ExecutionPolicy Bypass -File setup.ps1
+```
+
+(Si PowerShell bloquea la ejecucion de scripts, basta con habilitarlo una vez por usuario: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.)
+
+El script es seguro de volver a ejecutar: si el entorno virtual o el `.env` ya existen, los reutiliza en vez de sobreescribirlos. Al terminar, deja el proyecto listo salvo por el ultimo paso (levantar el servidor, ver seccion 4).
+
+Los pasos 3.1 a 3.3 de abajo explican en detalle que hace el script, por si se prefiere ejecutarlos a mano o el script falla en algun punto.
+
+### 3.1. Entorno virtual de Python (manual)
 
 Para trabajar en el proyecto de forma aislada, se recomienda usar un entorno virtual. Dentro de la carpeta del repositorio, ejecutar:
 
@@ -40,7 +68,7 @@ pip install -r requirements.txt
 
 Esperar a que termine la instalacion antes de continuar.
 
-### 4. Archivo `.env`
+### 3.2. Archivo `.env` (manual)
 
 Dentro de la carpeta `assistrecord` es necesario crear un archivo `.env` con las siguientes variables:
 
@@ -80,7 +108,7 @@ Esto entrega una clave similar a:
 
 Esa clave debe copiarse en `<django_secret_key>`.
 
-### 5. Migraciones y datos de ejemplo
+### 3.3. Migraciones y datos de ejemplo (manual)
 
 Django usa un ORM: las clases definidas en cada `models.py` son la plantilla de las tablas que se crean en la base de datos. Para crear esas tablas, ejecutar:
 
@@ -94,7 +122,7 @@ Opcionalmente, para probar el sistema con datos de ejemplo, existe un comando qu
 python manage.py seed_demo_data
 ```
 
-### 6. Levantar el backend
+### 4. Levantar el backend
 
 Con todo lo anterior listo, el backend puede iniciarse con:
 
