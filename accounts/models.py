@@ -12,7 +12,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         ADMIN = "administrador", _("administrador")
 
     id = models.BigAutoField(_("User Id"),unique=True, primary_key=True)
-    nickname = models.CharField(_("Nickname"),max_length=64, unique=True)
+    email = models.EmailField(_("Email"),unique=True)
 
     name=models.CharField(max_length=100)
     first_lastname=models.CharField(max_length=100)
@@ -28,12 +28,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         default=UserType.EMPLEADO,
     )
     phone = models.CharField(max_length=100, null=True, blank=True)
+    position = models.CharField(max_length=100, null=True, blank=True)
 
     date_registered = models.DateTimeField(auto_now_add=True)
 
     objects = UserAccManager()
 
-    USERNAME_FIELD = 'nickname'
+    USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['name', 'first_lastname']
     def __str__(self):
         return f'{0} - {1}'.format(self.name, self.first_lastname)

@@ -189,7 +189,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'accounts.User'
 
-ACCOUNT_USER_MODEL_USERNAME_FIELD = 'nickname'
-ACCOUNT_SIGNUP_FIELDS = ['nickname*' , 'password1*', 'password2*']
-ACCOUNT_LOGIN_METHODS = {'nickname'}
+ACCOUNT_USER_MODEL_USERNAME_FIELD = 'email'
+ACCOUNT_SIGNUP_FIELDS = ['email*' , 'password1*', 'password2*']
+ACCOUNT_LOGIN_METHODS = {'email'}
 FRONTEND_URL = os.environ.get("FRONTEND_URL")

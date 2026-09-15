@@ -10,15 +10,18 @@ class AssistanceRecord(models.Model):
         # actual_value_stored_in_db, human_readable_display_name
         INGRESO = "ingreso", _("ingreso")
         SALIDA = "salida", _("salida")
+        FALTA_ANTICIPADA = "falta_anticipada", _("falta anticipada")
 
     id = models.BigAutoField(_("Record Id"),unique=True, primary_key=True)
 
-    timestamp=models.DateTimeField()
+    date=models.DateField()
+    time=models.TimeField()
     type = models.CharField(
         max_length=16,
         choices=AssistanceType.choices,
         default=AssistanceType.INGRESO,
     )
+    delay = models.BooleanField(default=False)
     user = models.ForeignKey(User, related_name='assistances', on_delete=models.CASCADE)
 
     def __str__(self):
