@@ -20,10 +20,10 @@ class CustomCreateView(APIView):
   permission_classes = [IsAuthenticated, IsAdminType] # Permissions needed to register a new profile, being authenticated
 
   def post(self, request, *args, **kwargs):
-    serializer = UserCreateSerializer(data=request.data)
+    serializer = UserCreateSerializer(data=request.data, context={'request': request})
     if serializer.is_valid():
-      serializer.save()
-      return Response({'message': 'Registration successful.'}, status=status.HTTP_201_CREATED)
+      user = serializer.save()
+      return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

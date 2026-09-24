@@ -36,3 +36,39 @@ class UserCrudTests(APITestCase):
 
   def test_anonymous_me(self):
     self.assertEqual(self.client.get('/accounts_api/users/me/').status_code, 401)
+
+
+class UserCreateAndPromotionTests(APITestCase):
+  def setUp(self):
+    self.admin = User.objects.create_user('admin@x.com', 'Ana', 'Admin', 'AdminPass123!', type=User.UserType.ADMIN)
+    self.client.force_authenticate(self.admin)
+    self.payload = {'email': 'new@x.com', 'password': 'NewPass123!', 're_password': 'NewPass123!',
+                    'name': 'Nuevo', 'first_lastname': 'Usuario'}
+
+  def test_create_employee_returns_user(self):
+    r = self.client.post('/accounts_api/registration/', self.payload)
+    self.assertEqual(r.status_code, 201)
+    self.assertEqual(r.data['type'], 'empleado')
+    self.assertEqual(r.data['email'], 'new@x.com')
+    self.assertIn('id', r.data)
+    self.assertNotIn('password', r.data)
+    self.assertNotIn('admin_password', r.data)
+
+  def test_create_admin_requires_password(self):
+    data = {**self.payload, 'type': 'administrador'}
+    self.assertEqual(self.client.post('/accounts_api/registration/', data).status_code, 403)
+    self.assertEqual(self.client.post('/accounts_api/registration/', {**data, 'admin_password': 'wrong'}).status_code, 403)
+    self.assertFalse(User.objects.filter(email='new@x.com').exists())
+
+    r = self.client.post('/accounts_api/registration/', {**data, 'admin_password': 'AdminPass123!'})
+    self.assertEqual(r.status_code, 201)
+    self.assertEqual(r.data['type'], 'administrador')
+
+  def test_promote_requires_password(self):
+    emp = User.objects.create_user('emp@x.com', 'Eva', 'Emp', 'pass')
+    url = f'/accounts_api/users/{emp.id}/'
+    self.assertEqual(self.client.patch(url, {'type': 'administrador'}).status_code, 403)
+    r = self.client.patch(url, {'type': 'administrador', 'admin_password': 'AdminPass123!'})
+    self.assertEqual(r.status_code, 200)
+    # Already admin: editing other fields needs no password
+    self.assertEqual(self.client.patch(url, {'phone': '123'}).status_code, 200)

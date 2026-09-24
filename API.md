@@ -70,14 +70,27 @@ Registra nuevo usuario, requiere token de acceso y que el usuario sea un adminis
   "password": "MySecurePass123!",
   "re_password": "MySecurePass123!",
   "name": "Juan",
-  "first_lastname": "Perez"
+  "first_lastname": "Perez",
+  "type": "empleado"
 }
 ```
-`second_lastname`, `phone`, y `position` no son necesariamente solicitados para registrar
+- `type` es opcional (`empleado` por defecto) y acepta `empleado` o `administrador`.
+- Para crear un `administrador` se debe enviar ademas `admin_password`: la contraseña **del administrador que hace la peticion**. Se verifica contra su usuario; si falta o no coincide → `403` y no se crea nada.
 
-**Output — 201**
+**Output — 201** (mismo formato que `GET /accounts_api/users/{id}/`)
 ```json
-{ "message": "Registration successful." }
+{
+  "id": 7,
+  "email": "jperez@example.com",
+  "name": "Juan",
+  "first_lastname": "Perez",
+  "second_lastname": null,
+  "type": "empleado",
+  "phone": null,
+  "position": null,
+  "is_active": true,
+  "date_registered": "2026-09-24T12:00:00Z"
+}
 ```
 
 **Output — 400** (contraseñas no coinciden, contraseña debil, email duplicado) 
@@ -87,6 +100,11 @@ Registra nuevo usuario, requiere token de acceso y que el usuario sea un adminis
 o
 ```json
 { "email": ["user with this Email already exists."] }
+```
+
+**Output — 403** (`type: "administrador"` sin `admin_password` valido)
+```json
+{ "detail": "admin_password is required and must match your password to grant administrador." }
 ```
 
 ### `GET /accounts_api/users/me/`
@@ -113,6 +131,8 @@ El alta de usuarios sigue en `registration/`. Un empleado recibe `403`.
 | DELETE | `/accounts_api/users/{id}/` | Desactiva (`is_active=false`), no borra; conserva el historial de asistencias. `204` |
 
 Para reactivar: `PATCH {"is_active": true}`.
+
+Ascender a un usuario a `administrador` (`type: "administrador"` en `PUT`/`PATCH`) exige `admin_password`, igual que en `registration/`; si falta o no coincide → `403`. Editar otros campos de un usuario que ya es administrador no lo pide.
 
 **Output de detalle — 200**
 ```json

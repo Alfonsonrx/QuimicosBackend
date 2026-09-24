@@ -28,6 +28,7 @@ Usuario Administrador
 - Datos inválidos o email duplicado → `400`.
 - Usuario inexistente → `404`.
 - No admin → `403`.
+- Cambiar `type` a `administrador` sin `admin_password` válido → `403` (misma regla que [005](../005-crear-usuario/spec.md)).
 
 ## Postcondiciones
 Los datos del usuario quedan actualizados.
