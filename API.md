@@ -89,6 +89,47 @@ o
 { "email": ["user with this Email already exists."] }
 ```
 
+### `GET /accounts_api/users/me/`
+Datos básicos del usuario autenticado (cualquier tipo), pensados para guardarse en el frontend al iniciar sesión. Solo lectura.
+
+**Output — 200**
+```json
+{
+  "id": 3,
+  "name": "Juan",
+  "first_lastname": "Perez",
+  "type": "empleado"
+}
+```
+
+### `/accounts_api/users/` (solo administradores)
+El alta de usuarios sigue en `registration/`. Un empleado recibe `403`.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/accounts_api/users/` | Lista paginada (`?limit=&offset=`) |
+| GET | `/accounts_api/users/{id}/` | Detalle |
+| PUT / PATCH | `/accounts_api/users/{id}/` | Edita `email`, `name`, `first_lastname`, `second_lastname`, `type`, `phone`, `position`, `is_active` |
+| DELETE | `/accounts_api/users/{id}/` | Desactiva (`is_active=false`), no borra; conserva el historial de asistencias. `204` |
+
+Para reactivar: `PATCH {"is_active": true}`.
+
+**Output de detalle — 200**
+```json
+{
+  "id": 3,
+  "email": "jperez@example.com",
+  "name": "Juan",
+  "first_lastname": "Perez",
+  "second_lastname": null,
+  "type": "empleado",
+  "phone": null,
+  "position": null,
+  "is_active": true,
+  "date_registered": "2026-09-24T12:00:00Z"
+}
+```
+
 ---
 
 ## Registros de asistencia

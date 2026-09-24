@@ -6,7 +6,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
-from rest_framework import status
+from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
 import time
 
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -24,3 +25,21 @@ class CustomCreateView(APIView):
       serializer.save()
       return Response({'message': 'Registration successful.'}, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
+                  mixins.UpdateModelMixin, mixins.DestroyModelMixin,
+                  viewsets.GenericViewSet):
+  # Creation stays in CustomCreateView (registration/)
+  queryset = User.objects.all().order_by('id')
+  serializer_class = UserSerializer
+  permission_classes = [IsAuthenticated, IsAdminType]
+
+  def perform_destroy(self, instance):
+    # Soft delete: AssistanceRecord.user is CASCADE, a hard delete would wipe the user's history
+    instance.is_active = False
+    instance.save(update_fields=['is_active'])
+
+  @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+  def me(self, request):
+    return Response(SelfUserSerializer(request.user).data)
