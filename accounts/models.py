@@ -36,5 +36,9 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['name', 'first_lastname']
+    @property
+    def full_name(self):
+        return " ".join(p for p in (self.name, self.first_lastname, self.second_lastname) if p)
+
     def __str__(self):
         return f'{0} - {1}'.format(self.name, self.first_lastname)

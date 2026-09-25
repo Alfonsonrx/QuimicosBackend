@@ -7,12 +7,14 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
 
 from accounts.models import User
 from accounts.permissions import IsAdminType
-from assistance.serialiser import AssistanceSerializer, TodaySummarySerializer
+from assistance.serialiser import AssistanceSerializer, TodaySummarySerializer, WorkScheduleSerializer
 
-from .models import AssistanceRecord
+from .models import AssistanceRecord, ReentryPermit, WorkSchedule
 
 # Create your views here.
 
@@ -43,7 +45,7 @@ class AssistanceViewSet(viewsets.ModelViewSet):
     - updated_at
     """
 
-    queryset = AssistanceRecord.objects.all()
+    queryset = AssistanceRecord.objects.select_related("user")
     permission_classes = [IsAuthenticated]
     # required_permissions = {
     #     "list": "appointments:view",
@@ -78,9 +80,55 @@ class AssistanceViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     def get_permissions(self):
-        if self.action == "today_summary":
+        if self.action in ("today_summary", "allow_reentry"):
             return [IsAuthenticated(), IsAdminType()]
         return [permission() for permission in self.permission_classes]
+
+    @action(detail=False, methods=["get"], url_path="today-status")
+    def today_status(self, request):
+        """Requesting user's marks for today and which mark comes next (null = done for the day)."""
+        AssistanceType = AssistanceRecord.AssistanceType
+        today = timezone.localdate()
+        records = list(self.get_queryset().filter(user=request.user, date=today).order_by("time", "id"))
+        marks = [r for r in records if r.type != AssistanceType.FALTA_ANTICIPADA]
+        ingresos = [r.time for r in marks if r.type == AssistanceType.INGRESO]
+        salidas = [r.time for r in marks if r.type == AssistanceType.SALIDA]
+
+        last_type = marks[-1].type if marks else None
+        if last_type is None:
+            next_mark = AssistanceType.INGRESO
+        elif last_type == AssistanceType.INGRESO:
+            next_mark = AssistanceType.SALIDA
+        elif ReentryPermit.objects.filter(user=request.user, date=today, used=False).exists():
+            next_mark = AssistanceType.INGRESO
+        else:
+            next_mark = None
+
+        return Response({
+            "ingreso": ingresos[0] if ingresos else None,
+            "salida": salidas[-1] if salidas else None,
+            "next": next_mark,
+            "records": self.get_serializer(records, many=True).data,
+        })
+
+    @action(detail=False, methods=["post"], url_path="allow-reentry")
+    def allow_reentry(self, request):
+        """Admin authorizes one extra ingreso today for a user whose last mark today is a salida."""
+        AssistanceType = AssistanceRecord.AssistanceType
+        user = get_object_or_404(User, pk=request.data.get("user"))
+        today = timezone.localdate()
+        last = (AssistanceRecord.objects.filter(user=user, date=today)
+                .exclude(type=AssistanceType.FALTA_ANTICIPADA).order_by("time", "id").last())
+        if last is None or last.type != AssistanceType.SALIDA:
+            return Response({"user": ["User has no salida today to re-enter from."]}, status=status.HTTP_400_BAD_REQUEST)
+
+        permit, created = ReentryPermit.objects.get_or_create(
+            user=user, date=today, used=False, defaults={"granted_by": request.user}
+        )
+        return Response(
+            {"id": permit.id, "user": user.id, "date": permit.date, "used": permit.used},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
     @action(detail=False, methods=["get"], url_path="today-summary")
     def today_summary(self, request):
@@ -109,11 +157,8 @@ class AssistanceViewSet(viewsets.ModelViewSet):
                 record_type = "absence"
             counts[record_type] += 1
 
-            name_parts = [emp.name, emp.first_lastname]
-            if emp.second_lastname:
-                name_parts.append(emp.second_lastname)
             today_list.append({
-                "name": " ".join(name_parts),
+                "name": emp.full_name,
                 "position": emp.position,
                 "record_type": record_type,
             })
@@ -154,4 +199,22 @@ class AssistanceViewSet(viewsets.ModelViewSet):
             "today_list": today_list,
             "weekly_rate": weekly_rate,
         })
+        return Response(serializer.data)
+
+
+class WorkScheduleView(APIView):
+    """Company schedule: any authenticated user can read it, only administradores can change it."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), IsAdminType()]
+
+    def get(self, request):
+        return Response(WorkScheduleSerializer(WorkSchedule.get()).data)
+
+    def patch(self, request):
+        serializer = WorkScheduleSerializer(WorkSchedule.get(), data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(serializer.data)

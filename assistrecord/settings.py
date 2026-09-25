@@ -63,6 +63,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+CORS_ALLOW_ALL_ORIGINS = DEBUG
+
 ROOT_URLCONF = 'assistrecord.urls'
 
 TEMPLATES = [

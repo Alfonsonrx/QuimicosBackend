@@ -17,3 +17,5 @@ Cada spec vive en `NNN-nombre/spec.md`. Detalle de payloads en [`../API.md`](../
 | [010-falta-anticipada](010-falta-anticipada/spec.md) | TEC-010 | Falta anticipada | Hecho |
 | [011-visibilidad-registros](011-visibilidad-registros/spec.md) | TEC-011 | Visibilidad de registros de asistencia | Pendiente |
 | [012-marca-hora-servidor](012-marca-hora-servidor/spec.md) | TEC-012 | Marca con hora del servidor | Pendiente |
+| [013-horario-laboral](013-horario-laboral/spec.md) | TEC-013 | Horario laboral | Hecho |
+| [014-reingreso](014-reingreso/spec.md) | TEC-014 | Reingreso autorizado | Hecho |

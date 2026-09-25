@@ -2,7 +2,7 @@
 
 | ID | Autor | Creación | Actualización | Estado |
 |---|---|---|---|---|
-| RE-02 | GG | 01-01-2024 | 2026-09-24 | Pendiente |
+| RE-02 | GG | 01-01-2024 | 2026-09-25 | Pendiente |
 
 ## Descripción
 El Administrador puede elaborar un reporte de todos los que salen antes de las 17:30, lo que se considera una “salida anticipada”.
@@ -29,11 +29,14 @@ Usuario Administrador
 El administrador puede visualizar el reporte de salidas anticipadas.
 
 ## Estado en el backend
-- Los registros `type=salida` existen, pero no hay cálculo de salida anticipada ni endpoint.
+- `AssistanceRecord.early_exit` se guarda al marcar: `salida` anterior a `WorkSchedule.exit_time` (17:30 por defecto, configurable, ver [013](../013-horario-laboral/spec.md)); se recalcula en `PUT/PATCH`.
+- Una salida intermedia antes de un reingreso ([014](../014-reingreso/spec.md)) también queda `early_exit=True`.
+- No existe endpoint de reporte.
 
 ## Pendiente / criterios de aceptación
-- [ ] Criterio: registro `salida` con `time < 17:30`.
-- [ ] Decidir si se guarda un flag (como `delay`) o se filtra al consultar; filtrar por `time` al consultar evita migración.
+- [x] Criterio: `salida` con `time < exit_time` (flag `early_exit`, guardado al marcar para no reescribir el histórico).
+- [ ] El reporte considera solo la **última** salida de cada día (si el empleado volvió, la salida intermedia no cuenta).
 - [ ] Endpoint admin, p. ej. `GET /assistance_api/assistances/reports/early-exits/?from=&to=`, mismo formato que [002](../002-reporte-atrasos/spec.md).
-- [ ] Tests: 17:30 exacto no es anticipada, 17:29 sí; empleado recibe `403`.
+- [x] Tests de umbral (17:30 no, 17:29 sí) en `assistance/tests.py`.
+- [ ] Test del endpoint: empleado recibe `403`.
 - [ ] Documentar en `API.md`.

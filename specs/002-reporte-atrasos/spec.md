@@ -2,7 +2,7 @@
 
 | ID | Autor | Creación | Actualización | Estado |
 |---|---|---|---|---|
-| RE-01 | GG | 01-01-2024 | 2026-09-24 | Pendiente |
+| RE-01 | GG | 01-01-2024 | 2026-09-25 | Pendiente |
 
 ## Descripción
 El Administrador puede elaborar un reporte de todos los que entran después de las 9:30, lo que se considera una “entrada atrasada”.
@@ -29,15 +29,15 @@ Usuario Administrador
 El administrador puede visualizar el reporte de atrasos.
 
 ## Estado en el backend
-- `AssistanceRecord.delay` se calcula al crear un `ingreso` en `AssistanceSerializer.create`.
-- **Brecha:** el umbral es `INGRESO_DELAY_THRESHOLD_HOUR = 9` (`time.hour >= 9`), o sea 9:00, no 9:30.
-- **Brecha:** `delay` no se recalcula en `PUT/PATCH`.
+- `AssistanceRecord.delay` se calcula al marcar (`schedule_flags` en `assistance/serialiser.py`): primer `ingreso` del día posterior a `WorkSchedule.entry_time` (9:30 por defecto, configurable, ver [013](../013-horario-laboral/spec.md)).
+- `delay` se recalcula en `PUT/PATCH`.
 - No existe endpoint de reporte.
 
 ## Pendiente / criterios de aceptación
-- [ ] Umbral de atraso = 9:30 (entrada estrictamente posterior a 9:30 es atraso).
-- [ ] Recalcular `delay` también al editar `time`/`type` de un registro.
-- [ ] Endpoint admin, p. ej. `GET /assistance_api/assistances/reports/late/?from=YYYY-MM-DD&to=YYYY-MM-DD`.
+- [x] Umbral de atraso = 9:30, configurable (entrada estrictamente posterior es atraso).
+- [x] Recalcular `delay` también al editar `time`/`type` de un registro.
+- [ ] Endpoint admin (filtrar `delay=True`), p. ej. `GET /assistance_api/assistances/reports/late/?from=YYYY-MM-DD&to=YYYY-MM-DD`.
 - [ ] Respuesta agrupada por usuario: id, nombre, lista de días con hora de entrada.
-- [ ] Tests: umbral 9:30 exacto no es atraso, 9:31 sí; empleado recibe `403`.
+- [x] Tests de umbral (9:30 no, 9:31 sí) en `assistance/tests.py`.
+- [ ] Test del endpoint: empleado recibe `403`.
 - [ ] Documentar en `API.md`.

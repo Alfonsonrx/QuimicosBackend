@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from assistance.models import AssistanceRecord
+from assistance.models import AssistanceRecord, WorkSchedule
 
 User = get_user_model()
 
@@ -116,10 +116,10 @@ class Command(BaseCommand):
                 user=juan, date=today, time=time(8, 5), type=AssistanceRecord.AssistanceType.INGRESO, delay=False
             )
 
-        # Maria: late ingreso -> present, delayed
+        # Maria: late ingreso (after the 9:30 default entry) -> present, delayed
         if not self._record_exists(maria, today, AssistanceRecord.AssistanceType.INGRESO):
             AssistanceRecord.objects.create(
-                user=maria, date=today, time=time(9, 20), type=AssistanceRecord.AssistanceType.INGRESO, delay=True
+                user=maria, date=today, time=time(9, 45), type=AssistanceRecord.AssistanceType.INGRESO, delay=True
             )
 
         # Carlos: anticipated absence pre-registered by the admin -> anticipated_absence
@@ -130,17 +130,18 @@ class Command(BaseCommand):
 
         # Ana: no record at all today -> absence
 
-        # Pedro: full day, ingreso + salida -> present
+        # Pedro: ingreso + salida before the 17:30 default exit -> present, early exit
         if not self._record_exists(pedro, today, AssistanceRecord.AssistanceType.INGRESO):
             AssistanceRecord.objects.create(
                 user=pedro, date=today, time=time(7, 55), type=AssistanceRecord.AssistanceType.INGRESO, delay=False
             )
         if not self._record_exists(pedro, today, AssistanceRecord.AssistanceType.SALIDA):
             AssistanceRecord.objects.create(
-                user=pedro, date=today, time=time(17, 0), type=AssistanceRecord.AssistanceType.SALIDA
+                user=pedro, date=today, time=time(17, 0), type=AssistanceRecord.AssistanceType.SALIDA, early_exit=True
             )
 
     def _seed_history(self, employees, weeks, today):
+        schedule = WorkSchedule.get()
         start = today - timedelta(days=weeks * 7)
         current = start
         while current < today:
@@ -148,13 +149,12 @@ class Command(BaseCommand):
                 for emp in employees:
                     if random.random() < 0.8:  # ~80% attendance rate
                         if not self._record_exists(emp, current, AssistanceRecord.AssistanceType.INGRESO):
-                            hour = random.choice([8, 8, 8, 9, 9])
-                            minute = random.randint(0, 59)
+                            entry = time(random.choice([8, 8, 8, 9, 9]), random.randint(0, 59))
                             AssistanceRecord.objects.create(
                                 user=emp,
                                 date=current,
-                                time=time(hour, minute),
+                                time=entry,
                                 type=AssistanceRecord.AssistanceType.INGRESO,
-                                delay=hour >= 9,
+                                delay=schedule.is_late(entry),
                             )
             current += timedelta(days=1)
