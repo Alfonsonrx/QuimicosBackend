@@ -72,3 +72,38 @@ class UserCreateAndPromotionTests(APITestCase):
     self.assertEqual(r.status_code, 200)
     # Already admin: editing other fields needs no password
     self.assertEqual(self.client.patch(url, {'phone': '123'}).status_code, 200)
+
+
+class RegistrationAndLoginTests(APITestCase):
+  def setUp(self):
+    self.admin = User.objects.create_user('admin@x.com', 'Ana', 'Admin', 'AdminPass123!', type=User.UserType.ADMIN)
+    self.emp = User.objects.create_user('emp@x.com', 'Eva', 'Emp', 'EmpPass123!')
+    self.payload = {'email': 'new@x.com', 'password': 'NewPass123!', 're_password': 'NewPass123!',
+                    'name': 'Nuevo', 'first_lastname': 'Usuario'}
+
+  def test_passwords_must_match(self):
+    # re_password is a confirmation field: if it differs, the user is not created.
+    self.client.force_authenticate(self.admin)
+    r = self.client.post('/accounts_api/registration/', {**self.payload, 're_password': 'Other123!'})
+    self.assertEqual(r.status_code, 400)
+    self.assertIn('re_password', r.data)
+
+  def test_employee_cannot_register_users(self):
+    # Only admins can create users.
+    self.client.force_authenticate(self.emp)
+    self.assertEqual(self.client.post('/accounts_api/registration/', self.payload).status_code, 403)
+
+  def test_login_returns_token(self):
+    # Real login flow: get a JWT with email + password, then use it in the Authorization header.
+    r = self.client.post('/token/', {'email': 'emp@x.com', 'password': 'EmpPass123!'})
+    self.assertEqual(r.status_code, 200)
+    self.client.credentials(HTTP_AUTHORIZATION=f"JWT {r.data['access']}")  # prefix is JWT, not Bearer
+    self.assertEqual(self.client.get('/accounts_api/users/me/').data['id'], self.emp.id)
+
+  def test_deleted_user_cannot_login(self):
+    # Deleting a user only deactivates it (soft delete), but that must still block the login.
+    self.client.force_authenticate(self.admin)
+    self.client.delete(f'/accounts_api/users/{self.emp.id}/')
+    self.client.force_authenticate(None)
+    r = self.client.post('/token/', {'email': 'emp@x.com', 'password': 'EmpPass123!'})
+    self.assertEqual(r.status_code, 401)

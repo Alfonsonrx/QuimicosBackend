@@ -16,52 +16,20 @@ from assistance.serialiser import AssistanceSerializer, TodaySummarySerializer, 
 
 from .models import AssistanceRecord, ReentryPermit, WorkSchedule
 
-# Create your views here.
-
 class AssistanceViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for Appointment CRUD operations.
-    Requires active subscription with appointments feature (AppointmentsFeatureAccess).
+    Attendance records (ingreso / salida / falta_anticipada).
 
-    Supports filtering by:
-    - status
-    - appointment_type
-    - customer
-    - project
-    - is_virtual
-    - month (start_datetime month)
-    - year (start_datetime year)
-    - organizer
-
-    Supports searching by:
-    - title
-    - description
-    - location
-
-    Supports ordering by:
-    - start_datetime
-    - end_datetime
-    - created_at
-    - updated_at
+    Standard CRUD plus extra actions:
+    - my-records: the requesting user's own records
+    - today-status: the requesting user's marks today and which mark comes next
+    - allow-reentry (admin): let a user mark ingreso again after a salida
+    - today-summary (admin): today's status of every employee + weekly presence rate
+    Marking rules live in AssistanceSerializer.create.
     """
 
     queryset = AssistanceRecord.objects.select_related("user")
     permission_classes = [IsAuthenticated]
-    # required_permissions = {
-    #     "list": "appointments:view",
-    #     "retrieve": "appointments:view",
-    #     "create": "appointments:create",
-    #     "update": "appointments:edit",
-    #     "partial_update": "appointments:edit",
-    #     "destroy": "appointments:delete",
-    #     "calendar": "appointments:view",
-    #     "my_appointments": "appointments:view",
-    # }
-    # filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    # filterset_class = AppointmentFilter
-    # search_fields = ["title", "description", "location"]
-    # ordering_fields = ["start_datetime", "end_datetime", "created_at", "updated_at"]
-    # ordering = ["start_datetime"]
 
     def get_serializer_class(self):
         return AssistanceSerializer
@@ -132,6 +100,13 @@ class AssistanceViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="today-summary")
     def today_summary(self, request):
+        """
+        Admin dashboard for today. Only active users of type empleado are counted.
+        - Each employee is present (has an ingreso), else anticipated_absence
+          (has a falta_anticipada), else absence.
+        - weekly_rate: per weekday (Mon-Fri), % of employees with an ingreso on those days,
+          from the first recorded date until today. A weekday not reached yet is None.
+        """
         AssistanceType = AssistanceRecord.AssistanceType
         today = timezone.localdate()
 

@@ -1,8 +1,22 @@
 # RegistroAsistencia — Backend
 
+## Idea de proyecto
+
+La idea de este proyecto es realizar un sistema de gestion de asistencia para una empresa de 25 personas, donde los empleados puedan marcar su ingreso y salida durante el horario laboral, y ademas quien sea administrador pueda observar las metricas tanto del dia respecto a las asistencias como mas general (quien ha faltado durante el mes, ha entrado/salido tarde, faltas anticipadas, etc).
+
+## Estructura
+
+- `accounts/`: usuarios, login (JWT) y permisos.
+- `assistance/`: marcas de asistencia, horario laboral, reingreso y resumen del dia.
+- `assistrecord/`: configuracion de Django (`settings.py`) y rutas principales (`urls.py`).
+- `API.md`: detalle de los endpoints.
+- `specs/`: requerimientos del proyecto, uno por carpeta.
+
 ## Utilizacion de este backend
 
 Para mas informacion sobre los endpoints disponibles, ver [API.md](API.md).
+
+Los requerimientos y el estado de cada funcionalidad estan en [specs/README.md](specs/README.md).
 
 Se recomienda usar [Postman](https://www.postman.com/) para probar los endpoints manualmente.
 
@@ -129,3 +143,13 @@ Con todo lo anterior listo, el backend puede iniciarse con:
 ```
 python manage.py runserver
 ```
+
+## Tests
+
+Para correr los tests:
+
+```
+python manage.py test accounts assistance
+```
+
+Django crea una base de datos temporal para los tests y la borra al terminar, por lo que el usuario de la base de datos configurado en `.env` necesita permiso para crear bases de datos.

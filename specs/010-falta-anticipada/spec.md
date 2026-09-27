@@ -30,3 +30,4 @@ El día del empleado cuenta como `anticipated_absence` en el resumen.
 ## Estado en el backend
 - `POST /assistance_api/assistances/` con `type=falta_anticipada`; validación en `AssistanceSerializer.validate`.
 - Usada por [009](../009-resumen-del-dia/spec.md); debe usarse en [004](../004-reporte-inasistencias/spec.md).
+- Tests en `assistance/tests.py` (`AnticipatedAbsenceTests`).

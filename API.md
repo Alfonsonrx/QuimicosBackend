@@ -10,6 +10,9 @@ Autenticacion: JWT (Libreria DRF Simplejwt). Se obtiene token a traves de /token
 
 Registro de cambios de la API para el frontend, mas reciente arriba. **breaking** = el frontend actual debe ajustarse. Las secciones afectadas llevan `🆕 (fecha)` en su titulo.
 
+### 2026-09-27
+- Aclaracion (sin cambio de comportamiento) de `weekly_rate` en `GET /assistance_api/assistances/today-summary/`: `null` solo si ese dia de la semana aun no ocurre desde el primer registro; si ocurrio y nadie marco, es `0.0`.
+
 ### 2026-09-25
 - **breaking** — `POST /assistance_api/assistances/` ahora valida el orden de las marcas por usuario y dia: no se puede marcar `ingreso` dos veces seguidas, ni `salida` sin un `ingreso` abierto, ni volver a ingresar despues de una `salida` sin permiso del admin. Todos responden `400` con el error en `type`. Maximo una `falta_anticipada` por usuario y dia.
 - **breaking** — `delay` ya no usa la hora fija 9:00: es `true` si el **primer** ingreso del dia es posterior a la hora de entrada configurada (9:30 por defecto). Una marca exactamente a las 9:30 no es atraso.
@@ -409,7 +412,7 @@ Solo admin (`IsAuthenticated` + tipo `administrador`). Resume la asistencia del 
   }
 }
 ```
-Los porcentajes de `weekly_rate` se calculan sobre **todos los datos historicos** para cada dia de la semana (no solo la semana actual); un dia sin ningun registro historico vuelve como `null` en vez de `0`. El `record_type` de cada elemento de `today_list` usa los mismos tres valores que las claves de `todays_records`: `present`, `absence`, `anticipated_absence`.
+Los porcentajes de `weekly_rate` se calculan sobre **todos los datos historicos** para cada dia de la semana (no solo la semana actual): desde la fecha del primer registro hasta hoy, que porcentaje de los empleados marco `ingreso` ese dia de la semana. Un dia de la semana que todavia no ha ocurrido en ese rango vuelve como `null`; si ocurrio pero nadie marco, vuelve `0.0`. Se usan los empleados activos de hoy para todo el historial (tambien cuentan en dias anteriores a su ingreso a la empresa). El `record_type` de cada elemento de `today_list` usa los mismos tres valores que las claves de `todays_records`: `present`, `absence`, `anticipated_absence`.
 
 **Output — 403** (autenticado pero no es tipo admin)
 ```json
@@ -426,3 +429,5 @@ Los porcentajes de `weekly_rate` se calculan sobre **todos los datos historicos*
 ## Problemas conocidos (no forman parte del contrato de esta API)
 
 - El admin de Django (`/admin/`) es exclusivo para superusuarios en este proyecto — **no** es donde los usuarios tipo `administrador` gestionan datos. Todo lo que necesitan esta expuesto a traves de la API de arriba, protegido con una validacion de tipo admin.
+- Cualquier usuario autenticado puede listar, editar y borrar los registros de asistencia de todos (pendiente, ver `specs/011-visibilidad-registros`).
+- Un empleado puede marcar asistencia por otro usuario y con cualquier fecha y hora, porque `user`, `date` y `time` los envia el cliente (pendiente, ver `specs/012-marca-hora-servidor`).

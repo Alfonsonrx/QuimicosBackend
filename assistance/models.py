@@ -6,8 +6,12 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-# Create your models here.
 class AssistanceRecord(models.Model):
+    """
+    One attendance mark.
+    delay = the day's first ingreso after the schedule's entry time; early_exit = a salida before the exit time.
+    Both are computed when the record is saved (schedule_flags), so later schedule changes don't rewrite them.
+    """
     class AssistanceType(models.TextChoices):
         # actual_value_stored_in_db, human_readable_display_name
         INGRESO = "ingreso", _("ingreso")

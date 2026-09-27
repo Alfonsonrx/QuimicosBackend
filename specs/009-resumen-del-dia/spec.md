@@ -30,4 +30,5 @@ El administrador visualiza el resumen del día.
 
 ## Estado en el backend
 - `GET /assistance_api/assistances/today-summary/` → `AssistanceViewSet.today_summary`, `TodaySummarySerializer`.
-- `weekly_rate` usa todo el historial; día sin datos = `null`. Detalle en `API.md`.
+- `weekly_rate` usa todo el historial, desde el primer registro hasta hoy: un día de la semana que aún no ocurre en ese rango = `null`; si ocurrió y nadie marcó = `0.0`. Detalle en `API.md`.
+- Tests en `assistance/tests.py` (`TodaySummaryTests`).

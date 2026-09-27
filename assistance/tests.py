@@ -1,4 +1,5 @@
 from datetime import date, time
+from unittest.mock import patch
 
 from django.utils import timezone
 from rest_framework.test import APITestCase
@@ -83,3 +84,87 @@ class AssistanceMarkingTests(APITestCase):
     r = self.client.patch(f"{URL}{rec['id']}/", {'time': '10:00'})
     self.assertTrue(r.data['delay'])
     self.assertEqual(WorkSchedule.get().entry_time, time(9, 30))
+
+
+SUMMARY_URL = URL + 'today-summary/'
+TODAY = date(2026, 1, 7)  # a Wednesday
+
+
+# The summary depends on "today", so every test pins it to TODAY.
+# That way the results don't change with the day the tests run.
+@patch('assistance.views.timezone.localdate', return_value=TODAY)
+class TodaySummaryTests(APITestCase):
+  def setUp(self):
+    self.admin = User.objects.create_user('admin@x.com', 'Ana', 'Admin', 'pass', type=User.UserType.ADMIN)
+    self.a = User.objects.create_user('a@x.com', 'Ana', 'Present', 'pass')
+    self.b = User.objects.create_user('b@x.com', 'Beto', 'Excused', 'pass')
+
+  def add(self, user, type_, day=TODAY):
+    # Records are created directly in the DB to skip the marking rules; we only test the report here.
+    AssistanceRecord.objects.create(user=user, type=type_, date=day, time=time(9, 0))
+
+  def test_only_admin_can_see_summary(self, _):
+    # No token -> 401, employee -> 403, admin -> 200
+    self.assertEqual(self.client.get(SUMMARY_URL).status_code, 401)
+    self.client.force_authenticate(self.a)
+    self.assertEqual(self.client.get(SUMMARY_URL).status_code, 403)
+    self.client.force_authenticate(self.admin)
+    self.assertEqual(self.client.get(SUMMARY_URL).status_code, 200)
+
+  def test_classifies_each_employee(self, _):
+    # A marked ingreso, B has an anticipated absence, C marked nothing.
+    # D is inactive (soft deleted), so it must not be counted even with a record.
+    c = User.objects.create_user('c@x.com', 'Carla', 'Missing', 'pass')
+    d = User.objects.create_user('d@x.com', 'Dani', 'Gone', 'pass', is_active=False)
+    self.add(self.a, 'ingreso')
+    self.add(self.b, 'falta_anticipada')
+    self.add(d, 'ingreso')
+
+    self.client.force_authenticate(self.admin)
+    data = self.client.get(SUMMARY_URL).data
+
+    # Admins are not employees, so only A, B and C show up.
+    self.assertEqual(data['todays_records'], {'present': 1, 'absence': 1, 'anticipated_absence': 1})
+    by_name = {row['name']: row['record_type'] for row in data['today_list']}
+    self.assertEqual(by_name, {
+      'Ana Present': 'present',
+      'Beto Excused': 'anticipated_absence',
+      'Carla Missing': 'absence',
+    })
+
+  def test_weekly_rate(self, _):
+    # weekly_rate = % of employees that marked ingreso, per weekday, from the first record until today.
+    self.add(self.a, 'ingreso', date(2026, 1, 5))  # Monday: 1 of 2 present
+    self.add(self.a, 'ingreso', date(2026, 1, 6))  # Tuesday: 2 of 2 present
+    self.add(self.b, 'ingreso', date(2026, 1, 6))
+    # Wednesday (today): nobody marked yet -> 0%
+
+    self.client.force_authenticate(self.admin)
+    rate = self.client.get(SUMMARY_URL).data['weekly_rate']
+
+    self.assertEqual(rate['monday'], 50.0)
+    self.assertEqual(rate['tuesday'], 100.0)
+    self.assertEqual(rate['wednesday'], 0.0)
+    # Thursday and Friday have no days in the range yet, so there is no rate (None, not 0).
+    self.assertIsNone(rate['thursday'])
+    self.assertIsNone(rate['friday'])
+
+
+class AnticipatedAbsenceTests(APITestCase):
+  def setUp(self):
+    self.admin = User.objects.create_user('admin@x.com', 'Ana', 'Admin', 'pass', type=User.UserType.ADMIN)
+    self.emp = User.objects.create_user('emp@x.com', 'Eva', 'Emp', 'pass')
+    self.payload = {'user': self.emp.id, 'type': 'falta_anticipada', 'date': date(2026, 1, 5), 'time': '00:00'}
+
+  def test_only_admin_can_register(self):
+    # An employee can't excuse themselves; only an admin can register the absence.
+    self.client.force_authenticate(self.emp)
+    self.assertEqual(self.client.post(URL, self.payload).status_code, 400)
+    self.client.force_authenticate(self.admin)
+    self.assertEqual(self.client.post(URL, self.payload).status_code, 201)
+
+  def test_no_duplicates(self):
+    # The same user can't have two anticipated absences on the same day.
+    self.client.force_authenticate(self.admin)
+    self.assertEqual(self.client.post(URL, self.payload).status_code, 201)
+    self.assertEqual(self.client.post(URL, self.payload).status_code, 400)

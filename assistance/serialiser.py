@@ -49,6 +49,10 @@ class AssistanceSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        # Marking rules, per user and day:
+        # - ingreso and salida must alternate, starting with ingreso
+        # - an ingreso after a salida needs an unused ReentryPermit, which is consumed here
+        # - at most one falta_anticipada, and it doesn't count in the alternation
         user, day = validated_data["user"], validated_data["date"]
         record_type = validated_data.get("type", AssistanceType.INGRESO)
         with transaction.atomic():
