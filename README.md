@@ -153,3 +153,5 @@ python manage.py test accounts assistance
 ```
 
 Django crea una base de datos temporal para los tests y la borra al terminar, por lo que el usuario de la base de datos configurado en `.env` necesita permiso para crear bases de datos.
+
+Detalle de que prueba cada test y que falta: [specs/plan-de-pruebas.md](specs/plan-de-pruebas.md).

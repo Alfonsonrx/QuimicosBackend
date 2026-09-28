@@ -2,7 +2,7 @@
 
 | ID | Autor | Creación | Actualización | Estado |
 |---|---|---|---|---|
-| RE-03 | GG | 01-01-2024 | 2026-09-24 | Parcial |
+| RE-03 | GG | 01-01-2024 | 2026-09-27 | Hecho |
 
 ## Descripción
 El Administrador puede elaborar un reporte de todos los que no registraron ni entrada ni salida en un día.
@@ -29,13 +29,14 @@ Usuario Administrador
 El administrador puede visualizar el reporte de inasistencias.
 
 ## Estado en el backend
-- `GET /assistance_api/assistances/today-summary/` ya clasifica a cada empleado activo **solo para hoy** en `present`, `absence`, `anticipated_absence` (ver [009](../009-resumen-del-dia/spec.md)).
-- No hay reporte por rango ni por usuario/día.
+- Para el día actual también está `today-summary` (ver [009](../009-resumen-del-dia/spec.md)).
+- `GET /assistance_api/assistances/reports/absences/` → `AssistanceViewSet.report_absences`: días hábiles sin ingreso ni salida, empleados activos, desde su `date_registered`; `falta_anticipada` → `justified: true`.
+- Tests en `assistance/tests.py` (`ReportTests`).
 
-## Pendiente / criterios de aceptación
-- [ ] Endpoint admin, p. ej. `GET /assistance_api/assistances/reports/absences/?from=&to=`.
-- [ ] Considerar solo días hábiles (lun–vie) y usuarios activos tipo `empleado`.
-- [ ] Día sin `ingreso` ni `salida` = inasistencia; si tiene `falta_anticipada`, marcarla como justificada (ver [010](../010-falta-anticipada/spec.md)).
-- [ ] Reutilizar la lógica de `today_summary` en `assistance/views.py` en vez de duplicarla.
-- [ ] Tests: día sin registros aparece; fin de semana no; empleado recibe `403`.
-- [ ] Documentar en `API.md`.
+## Criterios de aceptación
+- [x] Endpoint admin, p. ej. `GET /assistance_api/assistances/reports/absences/?from=&to=`.
+- [x] Considerar solo días hábiles (lun–vie) y usuarios activos tipo `empleado`.
+- [x] Día sin `ingreso` ni `salida` = inasistencia; si tiene `falta_anticipada`, marcarla como justificada (ver [010](../010-falta-anticipada/spec.md)).
+- [x] ~~Reutilizar la lógica de `today_summary`~~: no aplica, `today_summary` clasifica solo el día actual; el reporte recorre un rango con una consulta propia.
+- [x] Tests: día sin registros aparece; fin de semana no; empleado recibe `403`.
+- [x] Documentar en `API.md`.

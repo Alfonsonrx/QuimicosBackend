@@ -168,3 +168,68 @@ class AnticipatedAbsenceTests(APITestCase):
     self.client.force_authenticate(self.admin)
     self.assertEqual(self.client.post(URL, self.payload).status_code, 201)
     self.assertEqual(self.client.post(URL, self.payload).status_code, 400)
+
+
+REPORTS_URL = URL + 'reports/'
+
+
+# Reports read the whole history up to "today", so "today" is pinned to TODAY (Wed 2026-01-07).
+@patch('assistance.views.timezone.localdate', return_value=TODAY)
+class ReportTests(APITestCase):
+  def setUp(self):
+    self.admin = User.objects.create_user('admin@x.com', 'Ana', 'Admin', 'pass', type=User.UserType.ADMIN)
+    self.a = User.objects.create_user('a@x.com', 'Ana', 'Late', 'pass')
+    self.b = User.objects.create_user('b@x.com', 'Beto', 'Early', 'pass')
+    # Absences only count from the day a user was registered, so move it before the test dates.
+    User.objects.update(date_registered=timezone.make_aware(timezone.datetime(2026, 1, 1)))
+    self.client.force_authenticate(self.admin)
+
+  def add(self, user, type_, day, hhmm, **flags):
+    # Records go straight to the DB with their flags; here we only test the reports.
+    return AssistanceRecord.objects.create(user=user, type=type_, date=day, time=time(*hhmm), **flags)
+
+  def test_late(self, _):
+    # Only ingresos flagged as late (delay) show up, grouped by employee.
+    self.add(self.a, 'ingreso', date(2026, 1, 5), (9, 45), delay=True)
+    self.add(self.b, 'ingreso', date(2026, 1, 5), (9, 0))
+    data = self.client.get(REPORTS_URL + 'late/').data
+    self.assertEqual(data['count'], 1)
+    row = data['results'][0]
+    self.assertEqual((row['name'], row['count']), ('Ana Late', 1))
+    self.assertEqual(row['days'], [{'date': date(2026, 1, 5), 'time': time(9, 45)}])
+
+  def test_early_exits_use_last_salida(self, _):
+    # Monday: B left at 13:00 but came back and left at 18:00 -> not an early exit.
+    self.add(self.b, 'ingreso', date(2026, 1, 5), (9, 0))
+    self.add(self.b, 'salida', date(2026, 1, 5), (13, 0), early_exit=True)
+    self.add(self.b, 'ingreso', date(2026, 1, 5), (14, 0))
+    self.add(self.b, 'salida', date(2026, 1, 5), (18, 0))
+    # Tuesday: B left at 16:00 and did not come back -> early exit.
+    self.add(self.b, 'ingreso', date(2026, 1, 6), (9, 0))
+    self.add(self.b, 'salida', date(2026, 1, 6), (16, 0), early_exit=True)
+    data = self.client.get(REPORTS_URL + 'early-exits/').data
+    self.assertEqual(data['count'], 1)
+    self.assertEqual(data['results'][0]['days'], [{'date': date(2026, 1, 6), 'time': time(16, 0)}])
+
+  def test_absences(self, _):
+    # Range is Sat 3 .. Wed 7 (first record .. today). Weekends never count as absences.
+    self.add(self.a, 'ingreso', date(2026, 1, 3), (9, 0))
+    self.add(self.a, 'ingreso', date(2026, 1, 5), (9, 0))
+    self.add(self.a, 'falta_anticipada', date(2026, 1, 6), (0, 0))  # excused by an admin
+    self.add(self.a, 'ingreso', date(2026, 1, 7), (9, 0))
+    data = self.client.get(REPORTS_URL + 'absences/').data
+    by_name = {row['name']: row['days'] for row in data['results']}
+    self.assertEqual(by_name['Ana Late'], [{'date': date(2026, 1, 6), 'justified': True}])
+    # B marked nothing: absent Mon, Tue and Wed, none of them excused.
+    self.assertEqual([d['date'].day for d in by_name['Beto Early']], [5, 6, 7])
+
+  def test_pagination_and_errors(self, _):
+    # Each page item is one employee; ?limit=1 returns one of the two.
+    self.add(self.a, 'ingreso', date(2026, 1, 5), (9, 45), delay=True)
+    self.add(self.b, 'ingreso', date(2026, 1, 5), (9, 50), delay=True)
+    data = self.client.get(REPORTS_URL + 'late/?limit=1').data
+    self.assertEqual((data['count'], len(data['results'])), (2, 1))
+    # Bad date -> 400. Employees can't see reports -> 403.
+    self.assertEqual(self.client.get(REPORTS_URL + 'late/?from=2026-13-01').status_code, 400)
+    self.client.force_authenticate(self.a)
+    self.assertEqual(self.client.get(REPORTS_URL + 'absences/').status_code, 403)

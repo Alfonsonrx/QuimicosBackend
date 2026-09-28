@@ -1,10 +1,11 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import override
 
 from django.shortcuts import render
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -25,6 +26,7 @@ class AssistanceViewSet(viewsets.ModelViewSet):
     - today-status: the requesting user's marks today and which mark comes next
     - allow-reentry (admin): let a user mark ingreso again after a salida
     - today-summary (admin): today's status of every employee + weekly presence rate
+    - reports/late, reports/early-exits, reports/absences (admin): per-employee reports (RE-01..03)
     Marking rules live in AssistanceSerializer.create.
     """
 
@@ -48,7 +50,7 @@ class AssistanceViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     def get_permissions(self):
-        if self.action in ("today_summary", "allow_reentry"):
+        if self.action in ("today_summary", "allow_reentry", "report_late", "report_early_exits", "report_absences"):
             return [IsAuthenticated(), IsAdminType()]
         return [permission() for permission in self.permission_classes]
 
@@ -97,6 +99,91 @@ class AssistanceViewSet(viewsets.ModelViewSet):
             {"id": permit.id, "user": user.id, "date": permit.date, "used": permit.used},
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+    # --- Reports (RE-01..03). The whole history by default; ?from= / ?to= optionally narrow it. ---
+
+    def _report_range(self, request):
+        today = timezone.localdate()
+        try:
+            start = date.fromisoformat(request.query_params["from"]) if "from" in request.query_params else None
+            end = date.fromisoformat(request.query_params["to"]) if "to" in request.query_params else today
+        except ValueError:
+            raise ValidationError({"detail": "from/to must be dates in YYYY-MM-DD format."})
+        if start is None:
+            first = AssistanceRecord.objects.order_by("date").values_list("date", flat=True).first()
+            start = first or today
+        end = min(end, today)
+        if start > end:
+            raise ValidationError({"detail": "from must not be later than to."})
+        return start, end
+
+    def _report_response(self, days_by_user, start, end):
+        """days_by_user: {user: [day dicts]} -> paginated list of employees sorted by name."""
+        results = sorted(
+            (
+                {"user": u.id, "name": u.full_name, "position": u.position, "count": len(days), "days": days}
+                for u, days in days_by_user.items() if days
+            ),
+            key=lambda r: r["name"],
+        )
+        page = self.paginate_queryset(results)
+        response = self.get_paginated_response(page) if page is not None else Response({"results": results})
+        response.data["from"] = start
+        response.data["to"] = end
+        return response
+
+    def _employee_records(self, start, end, types):
+        return (AssistanceRecord.objects.select_related("user")
+                .filter(user__type=User.UserType.EMPLEADO, date__range=(start, end), type__in=types)
+                .order_by("user_id", "date", "time", "id"))
+
+    @action(detail=False, methods=["get"], url_path="reports/late")
+    def report_late(self, request):
+        """RE-01: first ingreso of the day later than the schedule's entry time (delay flag)."""
+        start, end = self._report_range(request)
+        days_by_user = {}
+        for r in self._employee_records(start, end, [AssistanceRecord.AssistanceType.INGRESO]).filter(delay=True):
+            days_by_user.setdefault(r.user, []).append({"date": r.date, "time": r.time})
+        return self._report_response(days_by_user, start, end)
+
+    @action(detail=False, methods=["get"], url_path="reports/early-exits")
+    def report_early_exits(self, request):
+        """RE-02: days whose last mark is a salida before the schedule's exit time.
+        A salida followed by an authorized re-entry does not count."""
+        AssistanceType = AssistanceRecord.AssistanceType
+        start, end = self._report_range(request)
+        last_mark = {}  # (user, date) -> last ingreso/salida of that day
+        for r in self._employee_records(start, end, [AssistanceType.INGRESO, AssistanceType.SALIDA]):
+            last_mark[(r.user, r.date)] = r
+        days_by_user = {}
+        for (user, _), r in last_mark.items():
+            if r.type == AssistanceType.SALIDA and r.early_exit:
+                days_by_user.setdefault(user, []).append({"date": r.date, "time": r.time})
+        return self._report_response(days_by_user, start, end)
+
+    @action(detail=False, methods=["get"], url_path="reports/absences")
+    def report_absences(self, request):
+        """RE-03: weekdays with neither ingreso nor salida, per active employee, since they were registered.
+        A day covered by a falta_anticipada is listed as justified."""
+        AssistanceType = AssistanceRecord.AssistanceType
+        start, end = self._report_range(request)
+        employees = User.objects.filter(is_active=True, type=User.UserType.EMPLEADO)
+
+        records = AssistanceRecord.objects.filter(user__in=employees, date__range=(start, end))
+        marked = set(records.filter(type__in=[AssistanceType.INGRESO, AssistanceType.SALIDA])
+                     .values_list("user_id", "date"))
+        justified = set(records.filter(type=AssistanceType.FALTA_ANTICIPADA).values_list("user_id", "date"))
+
+        days_by_user = {}
+        for emp in employees:
+            day = max(start, timezone.localtime(emp.date_registered).date())
+            days = []
+            while day <= end:
+                if day.weekday() < 5 and (emp.id, day) not in marked:
+                    days.append({"date": day, "justified": (emp.id, day) in justified})
+                day += timedelta(days=1)
+            days_by_user[emp] = days
+        return self._report_response(days_by_user, start, end)
 
     @action(detail=False, methods=["get"], url_path="today-summary")
     def today_summary(self, request):

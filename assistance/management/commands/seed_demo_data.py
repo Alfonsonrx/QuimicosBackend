@@ -1,12 +1,12 @@
 import random
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from assistance.models import AssistanceRecord, WorkSchedule
+from assistance.models import AssistanceRecord, ReentryPermit, WorkSchedule
 
 User = get_user_model()
 
@@ -22,6 +22,8 @@ EMPLOYEES = [
 ]
 
 ADMIN = ("laura.gomez@example.com", "Laura", "Gomez", "Administradora")
+# Second admin with no marks today, to test the admin Entrada -> dashboard flow.
+ADMIN_SIN_MARCAS = ("diego.rojas@example.com", "Diego", "Rojas", None)
 SUPERUSER = ("superadmin@example.com", "Super", "Admin")
 
 
@@ -35,6 +37,11 @@ class Command(BaseCommand):
             default=3,
             help="How many past business weeks of history to generate (default: 3).",
         )
+        parser.add_argument(
+            "--reset",
+            action="store_true",
+            help="Delete every assistance record and re-entry permit of the demo users before seeding.",
+        )
 
     def handle(self, *args, **options):
         random.seed(42)
@@ -43,15 +50,24 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             superuser = self._get_or_create_superuser()
-            admin = self._get_or_create_admin()
+            admin = self._get_or_create_admin(*ADMIN)
+            admin_sin_marcas = self._get_or_create_admin(*ADMIN_SIN_MARCAS)
             employees = [self._get_or_create_employee(*data) for data in EMPLOYEES]
+            demo_users = [admin, admin_sin_marcas, *employees]
+            if options["reset"]:
+                AssistanceRecord.objects.filter(user__in=demo_users).delete()
+                ReentryPermit.objects.filter(user__in=demo_users).delete()
+            # Registered when the history starts, so reports/absences covers the whole range.
+            start = timezone.make_aware(datetime.combine(today - timedelta(days=weeks * 7), time(0, 0)))
+            User.objects.filter(pk__in=[e.pk for e in employees], date_registered__gt=start).update(date_registered=start)
             self._seed_today(employees, admin, today)
             self._seed_history(employees, weeks, today)
 
         self.stdout.write(self.style.SUCCESS("\nSeed complete. Login credentials (all use the same password):"))
         self.stdout.write(f"  password: {DEMO_PASSWORD}\n")
         self.stdout.write(f"  superuser (Django admin): {superuser.email}")
-        self.stdout.write(f"  admin (administrador, for API): {admin.email}")
+        self.stdout.write(f"  admin (administrador, ingreso abierto hoy): {admin.email}")
+        self.stdout.write(f"  admin (administrador, sin marcas hoy): {admin_sin_marcas.email}")
         for emp in employees:
             self.stdout.write(f"  employee: {emp.email} ({emp.position or 'no position'})")
 
@@ -72,8 +88,7 @@ class Command(BaseCommand):
             user.save()
         return user
 
-    def _get_or_create_admin(self):
-        email, name, first_lastname, second_lastname = ADMIN
+    def _get_or_create_admin(self, email, name, first_lastname, second_lastname):
         user, created = User.objects.get_or_create(
             email=email,
             defaults=dict(
@@ -130,14 +145,21 @@ class Command(BaseCommand):
 
         # Ana: no record at all today -> absence
 
-        # Pedro: ingreso + salida before the 17:30 default exit -> present, early exit
+        # Pedro: ingreso + salida before the 17:30 default exit -> present, early exit.
+        # Shows up in reports/early-exits today, so the admin can allow his re-entry.
         if not self._record_exists(pedro, today, AssistanceRecord.AssistanceType.INGRESO):
             AssistanceRecord.objects.create(
                 user=pedro, date=today, time=time(7, 55), type=AssistanceRecord.AssistanceType.INGRESO, delay=False
             )
         if not self._record_exists(pedro, today, AssistanceRecord.AssistanceType.SALIDA):
             AssistanceRecord.objects.create(
-                user=pedro, date=today, time=time(17, 0), type=AssistanceRecord.AssistanceType.SALIDA, early_exit=True
+                user=pedro, date=today, time=time(15, 0), type=AssistanceRecord.AssistanceType.SALIDA, early_exit=True
+            )
+
+        # Admin: open ingreso -> login goes straight to the dashboard, can still mark salida from /check.
+        if not self._record_exists(admin, today, AssistanceRecord.AssistanceType.INGRESO):
+            AssistanceRecord.objects.create(
+                user=admin, date=today, time=time(8, 30), type=AssistanceRecord.AssistanceType.INGRESO, delay=False
             )
 
     def _seed_history(self, employees, weeks, today):
@@ -157,4 +179,15 @@ class Command(BaseCommand):
                                 type=AssistanceRecord.AssistanceType.INGRESO,
                                 delay=schedule.is_late(entry),
                             )
+                    # Close every day that has an ingreso; ~35% leave before the exit time.
+                    if (self._record_exists(emp, current, AssistanceRecord.AssistanceType.INGRESO)
+                            and not self._record_exists(emp, current, AssistanceRecord.AssistanceType.SALIDA)):
+                        exit_ = time(random.choice([16, 17, 18, 18]), random.randint(0, 59))
+                        AssistanceRecord.objects.create(
+                            user=emp,
+                            date=current,
+                            time=exit_,
+                            type=AssistanceRecord.AssistanceType.SALIDA,
+                            early_exit=schedule.is_early_exit(exit_),
+                        )
             current += timedelta(days=1)

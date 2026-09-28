@@ -13,6 +13,9 @@ Registro de cambios de la API para el frontend, mas reciente arriba. **breaking*
 ### 2026-09-27
 - Aclaracion (sin cambio de comportamiento) de `weekly_rate` en `GET /assistance_api/assistances/today-summary/`: `null` solo si ese dia de la semana aun no ocurre desde el primer registro; si ocurrio y nadie marco, es `0.0`.
 
+### 2026-09-27
+- Nuevos reportes (admin), calculados en el backend, agrupados por empleado y paginados: `GET /assistance_api/assistances/reports/late/`, `.../reports/early-exits/`, `.../reports/absences/`. Por defecto cubren todo el historico; `?from=` / `?to=` opcionales.
+
 ### 2026-09-25
 - **breaking** — `POST /assistance_api/assistances/` ahora valida el orden de las marcas por usuario y dia: no se puede marcar `ingreso` dos veces seguidas, ni `salida` sin un `ingreso` abierto, ni volver a ingresar despues de una `salida` sin permiso del admin. Todos responden `400` con el error en `type`. Maximo una `falta_anticipada` por usuario y dia.
 - **breaking** — `delay` ya no usa la hora fija 9:00: es `true` si el **primer** ingreso del dia es posterior a la hora de entrada configurada (9:30 por defecto). Una marca exactamente a las 9:30 no es atraso.
@@ -177,7 +180,7 @@ Ascender a un usuario a `administrador` (`type: "administrador"` en `PUT`/`PATCH
 
 ## Registros de asistencia
 
-Endpoint Base: `/assistance_api/assistances/`. Todas las acciones requieren autenticacion: `Authorization: JWT <access_token>` (`IsAuthenticated`), excepto `today-summary` y `allow-reentry` que adicionalmente requieren que el usuario sea tipo `administrador`.
+Endpoint Base: `/assistance_api/assistances/`. Todas las acciones requieren autenticacion: `Authorization: JWT <access_token>` (`IsAuthenticated`), excepto `today-summary`, `allow-reentry` y los `reports/*` que adicionalmente requieren que el usuario sea tipo `administrador`.
 
 Todos los registros se devuelven con este formato. `name`, `position`, `delay` y `early_exit` son de solo lectura:
 ```json
@@ -386,6 +389,50 @@ Horario de la empresa, uno solo para todos. `GET` para cualquier autenticado; `P
 { "exit_time": ["exit_time must be later than entry_time."] }
 ```
 Solo afecta a las marcas nuevas; el historico conserva sus `delay` / `early_exit`.
+
+### Reportes: `GET /assistance_api/assistances/reports/{late,early-exits,absences}/` 🆕 (2026-09-27)
+Solo admin (`403` si no). Implementan RE-01, RE-02 y RE-03: el backend filtra y agrupa, el frontend solo muestra.
+
+| Ruta | Que lista |
+|---|---|
+| `reports/late/` | Dias con atraso: primer `ingreso` del dia con `delay: true` |
+| `reports/early-exits/` | Dias cuya **ultima** marca es una `salida` con `early_exit: true`. Si el empleado salio y volvio con permiso de reingreso, esa salida intermedia no cuenta |
+| `reports/absences/` | Dias habiles (lun-vie) sin `ingreso` ni `salida`, para empleados activos y desde su fecha de registro. Si el dia tiene `falta_anticipada`, sale con `justified: true` |
+
+**Query params** (opcionales)
+- `from`, `to` (`YYYY-MM-DD`): acotan el rango. Sin `from` empieza en el registro mas antiguo; sin `to` llega hasta hoy (`to` nunca pasa de hoy).
+- `limit`, `offset`: paginacion (50 por defecto). Cada elemento de `results` es un empleado.
+
+**Output — 200** (`late` y `early-exits`)
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "user": 3,
+      "name": "Juan Perez Diaz",
+      "position": "Bodeguero",
+      "count": 2,
+      "days": [
+        { "date": "2026-09-03", "time": "09:41:00" },
+        { "date": "2026-09-10", "time": "09:35:00" }
+      ]
+    }
+  ],
+  "from": "2026-09-01",
+  "to": "2026-09-27"
+}
+```
+En `absences` cada dia no tiene `time`: `{ "date": "2026-09-04", "justified": false }`.
+
+`from` / `to` devuelven el rango que realmente se uso. Solo aparecen empleados con al menos un caso, ordenados por nombre.
+
+**Output — 400** (fecha invalida, o `from` posterior a `to`)
+```json
+{ "detail": "from/to must be dates in YYYY-MM-DD format." }
+```
 
 ### `GET /assistance_api/assistances/today-summary/` 🆕
 Solo admin (`IsAuthenticated` + tipo `administrador`). Resume la asistencia del dia y una tasa historica de asistencia por dia de la semana, para todos los usuarios activos de tipo `empleado`.

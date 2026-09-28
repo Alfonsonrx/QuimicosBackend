@@ -61,7 +61,7 @@ class SelfUserSerializer(serializers.ModelSerializer):
     model = User
     fields = (
         'id',
-        'name', 
+        'name',
         'first_lastname',
         'type',
     )
