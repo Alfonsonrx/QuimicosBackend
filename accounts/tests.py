@@ -46,6 +46,8 @@ class UserCreateAndPromotionTests(APITestCase):
                     'name': 'Nuevo', 'first_lastname': 'Usuario'}
 
   def test_create_employee_returns_user(self):
+    # Al crear un usuario (Empleado o admin), retorna los detalles de este
+    # De esta forma se ahorra al usuario tener que refrescar la pagina por un cambio minimo.
     r = self.client.post('/accounts_api/registration/', self.payload)
     self.assertEqual(r.status_code, 201)
     self.assertEqual(r.data['type'], 'empleado')

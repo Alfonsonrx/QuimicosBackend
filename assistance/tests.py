@@ -42,6 +42,8 @@ class AssistanceMarkingTests(APITestCase):
     self.assertFalse(AssistanceRecord.objects.get(pk=old['id']).delay)
 
   def test_no_double_marks(self):
+    # Solo si el registro del mismo usuario no existe, entregara un status code 201.
+    # De lo contrario automaticamente retornara un status 400.
     self.assertEqual(self.mark('salida', (8, 0)).status_code, 400)
     self.assertEqual(self.mark('ingreso', (9, 0)).status_code, 201)
     self.assertEqual(self.mark('ingreso', (9, 5)).status_code, 400)
